@@ -44,3 +44,20 @@ test('sandbox rejects live Stripe response even with a test-shaped session ID',a
   const f=fixture({serviceOptions:{sandbox:true}});
   assert.equal((await f.req('session',{session_id:'cs_test_fixture'})).status,403);
 });
+
+test('closing persists, preserves history and allowance, and blocks further chat',async()=>{
+ const f=fixture();await login(f);const p=await f.req('project',{title:'Device filter issue'});
+ await f.req('chat',{project_id:p.data.id,message:'How do I check the filter?',request_id:'00000000-0000-4000-8000-000000000000'});
+ assert.equal((await f.req('resolve',{project_id:p.data.id})).data.projects[0].status,'resolved');
+ assert.equal((await f.req('resolve',{project_id:p.data.id})).status,200);
+ const saved=(await f.req('projects')).data;assert.equal(saved.used,1);assert.equal(saved.projects[0].messages.length,2);
+ assert.equal((await f.req('chat',{project_id:p.data.id,message:'One more question',request_id:'11111111-1111-4111-8111-111111111111'})).status,409);
+ assert.equal((await f.req('project',{title:'A different repair'})).status,403);assert.equal(f.counts().aiCalls,1);
+ assert.equal((await f.req('resolve',{project_id:'someone-elses-case'})).status,404);
+});
+test('cannot close a case while its AI answer is being processed',async()=>{
+ const f=fixture();await login(f);const p=await f.req('project',{title:'Device filter issue'});
+ for(const entry of f.data.values())entry.data.projects[0].busyUntil=Date.now()+60000;
+ assert.equal((await f.req('resolve',{project_id:p.data.id})).status,409);
+});
+
