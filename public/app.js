@@ -28,6 +28,6 @@ async function init(){
     const sid=new URL(location.href).searchParams.get('session_id');
     if(sid){await api('session',{session_id:sid});sessionStorage.setItem('fixflip-confirmation',location.href);history.replaceState({},'',location.pathname+'#workspace');}
     try{const data=await api('projects');selected=data.projects.at(-1)?.id;render(data);}catch(e){if(sid)$('workspaceStatus').textContent=e.message;}
-  }catch{$('setupNotice').textContent='Signup is temporarily unavailable while setup finishes. Please check back.';}
+  }catch(e){$('setupNotice').textContent='Unable to open the workspace: '+e.message;}
 }
 init();
