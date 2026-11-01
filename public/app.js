@@ -9,16 +9,20 @@ function render(data){
   $('allowance').textContent=`${data.plan} · ${data.used} of ${data.limit} project slots used${data.periodEnd?' · renews/resets '+new Date(data.periodEnd).toLocaleDateString():''}`;
   $('newProject').hidden=data.used>=data.limit;
   $('projectList').replaceChildren();
-  for(const p of data.projects){const b=document.createElement('button');b.textContent=p.title+(p.current?'':' (earlier period)');b.setAttribute('aria-current',String(p.id===selected));b.onclick=()=>{selected=p.id;pendingMessage=null;render(account);};$('projectList').append(b);}
+  for(const p of data.projects){const b=document.createElement('button');b.textContent=p.title+(p.status==='resolved'?' (resolved)':'')+(p.current?'':' (earlier period)');b.setAttribute('aria-current',String(p.id===selected));b.onclick=()=>{selected=p.id;pendingMessage=null;render(account);};$('projectList').append(b);}
   const p=data.projects.find(p=>p.id===selected);$('chatForm').hidden=!p||p.status!=='open'||!p.current;$('retry').hidden=!p||p.status!=='pending_email';$('messages').replaceChildren();$('reviewStatus').textContent='';
+  $('resolve').hidden=!p||!p.current||!['open','pending_email','forwarded'].includes(p.status);
+  $('closedNotice').hidden=!p||p.status!=='resolved';
+  $('closedNotice').textContent=p?.status==='resolved'?'Case resolved and closed. Your conversation is saved below. '+(data.used<data.limit?'Use Start project for a separate repair.':'For another repair, choose a plan above.') : '';
   if(!p)return;$('projectTitle').textContent=p.title;
   for(const m of p.messages){const div=document.createElement('div');div.className='message '+m.role;const label=document.createElement('strong');label.textContent=m.role==='user'?'YOU':'FIXFLIP AI';div.append(label,document.createTextNode(m.content));$('messages').append(div);}
   if(p.status==='forwarded')$('reviewStatus').textContent='Your unresolved question and conversation were submitted for Rick’s review. Replies go to your checkout email. No response time is guaranteed.';
   if(p.status==='pending_email')$('reviewStatus').textContent='This needs personal review. Your conversation is saved, but forwarding has not been confirmed. Please retry.';
 }
-async function run(task){if(busy)return;busy=true;$('workspaceStatus').textContent='Working…';$('send').disabled=true;try{await task();$('workspaceStatus').textContent='';}catch(e){$('workspaceStatus').textContent=e.message;}finally{busy=false;$('send').disabled=false;}}
+async function run(task){if(busy)return;busy=true;$('workspaceStatus').textContent='Working…';$('send').disabled=true;$('resolve').disabled=true;try{await task();$('workspaceStatus').textContent='';}catch(e){$('workspaceStatus').textContent=e.message;}finally{busy=false;$('send').disabled=false;$('resolve').disabled=false;}}
 $('newProject').onsubmit=e=>{e.preventDefault();run(async()=>{const data=await api('project',{title:$('title').value});selected=data.id;$('title').value='';render(data);});};
 $('chatForm').onsubmit=e=>{e.preventDefault();run(async()=>{const message=$('question').value;if(!pendingMessage||pendingMessage.message!==message||pendingMessage.project_id!==selected)pendingMessage={message,project_id:selected,request_id:crypto.randomUUID()};render(await api('chat',pendingMessage));$('question').value='';pendingMessage=null;});};
+$('resolve').onclick=()=>{if(busy||!selected)return;if(!confirm('Close this repair case as resolved? You can still read the conversation, but cannot send more questions in this case. Closing does not restore a project slot.'))return;const project_id=selected;run(async()=>{render(await api('resolve',{project_id}));$('question').value='';pendingMessage=null;});};
 $('retry').onclick=()=>run(async()=>render(await api('escalate',{project_id:selected})));
 document.querySelectorAll('.buy').forEach(b=>b.onclick=()=>{location.href=links[b.dataset.plan];});
 async function init(){
@@ -31,3 +35,4 @@ async function init(){
   }catch(e){$('setupNotice').textContent='Unable to open the workspace: '+e.message;}
 }
 init();
+
