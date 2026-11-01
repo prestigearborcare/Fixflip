@@ -8,6 +8,6 @@ const testKey=candidates.length===1?candidates[0]:rawKey.trim();
 export default async request => createService({
   store:getStore({name:'fixflip-sandbox-projects',consistency:'strong'}),
   env:{...process.env,STRIPE_SECRET_KEY:testKey,
-    SESSION_SECRET:undefined,FIXFLIP_LIVE:'true',ESCALATION_EMAIL_READY:'true'},
+    SESSION_SECRET:undefined,FIXFLIP_LIVE:process.env.FIXFLIP_SANDBOX_ENABLED==='true'?'true':'false',ESCALATION_EMAIL_READY:'true'},
   sandbox:true,singlePrice:'price_1UX5ZNRsNlbU5mNLI7pe0Xzq',monthlyPrice:'unused_sandbox_monthly'
 })(request);
