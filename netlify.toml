@@ -8,6 +8,10 @@
   from = "/api/*"
   to = "/.netlify/functions/api/:splat"
   status = 200
+[[redirects]]
+  from = "/test-api/*"
+  to = "/.netlify/functions/sandbox/:splat"
+  status = 200
 [[headers]]
   for = "/*"
   [headers.values]

@@ -51,3 +51,7 @@ Storage keys are purchase-specific or subscription-specific. Atomic conditional 
 ## Remaining limitations
 
 No image uploads, human replies inside the app, automated email-delivery receipt tracking, automatic deletion/retention jobs or per-user email verification beyond possession of a completed checkout link. Personal replies occur by email. User-specific chat content is never part of the Git repository. Privacy and service terms are initial drafts and should reflect the actual operating process.
+
+## Isolated sandbox checkout
+
+`/test.html` uses `/test-api/*`, a separate Netlify Blobs store, a separate signed cookie, and `STRIPE_TEST_SECRET_KEY`. The sandbox key must belong to account `acct_1UWWEnRsNlbU5mNL`. Only test-mode checkout sessions and the sandbox single-question price are accepted. Production continues to accept only live-mode sessions and its original live prices, with its launch flags unchanged. Test conversations can send real escalation notifications; use synthetic repair questions and the owner's email only. Remove `STRIPE_TEST_SECRET_KEY` after testing to disable the test workspace.
