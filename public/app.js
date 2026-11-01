@@ -1,7 +1,9 @@
 const $ = id => document.getElementById(id);
+const sandbox=location.pathname==='/test.html';
 const links={single:'https://buy.stripe.com/9B6bIU9LO6XN1CF6NG5ZC00',monthly:'https://buy.stripe.com/dRm8wI8HK6XN813gog5ZC01'};
+if(sandbox)links.single='https://buy.stripe.com/test_4gM14peAx5zI9lX2Fg1VK00';
 let account, selected, busy=false, pendingMessage;
-async function api(action,body){const r=await fetch('/api/'+action,{method:body?'POST':'GET',headers:body?{'Content-Type':'application/json'}:{},body:body?JSON.stringify(body):undefined});const d=await r.json();if(!r.ok)throw new Error(d.error||'Please try again.');return d;}
+async function api(action,body){const r=await fetch((sandbox?'/test-api/':'/api/')+action,{method:body?'POST':'GET',headers:body?{'Content-Type':'application/json'}:{},body:body?JSON.stringify(body):undefined});const d=await r.json();if(!r.ok)throw new Error(d.error||'Please try again.');return d;}
 function render(data){
   account=data;$('account').hidden=false;$('accessNotice').hidden=true;
   $('allowance').textContent=`${data.plan} · ${data.used} of ${data.limit} project slots used${data.periodEnd?' · renews/resets '+new Date(data.periodEnd).toLocaleDateString():''}`;
@@ -22,7 +24,7 @@ document.querySelectorAll('.buy').forEach(b=>b.onclick=()=>{location.href=links[
 async function init(){
   // Retire the launch-preview service worker so stale pages cannot hide checkout changes.
   if('serviceWorker' in navigator){for(const r of await navigator.serviceWorker.getRegistrations())await r.unregister();}
-  try{const state=await api('status');$('setupNotice').textContent=state.ready?'Secure checkout is available. Choose a plan below.':'We’re completing the AI and support setup. Paid signup is not open yet.';document.querySelectorAll('.buy').forEach(b=>b.disabled=!state.ready);if(!state.ready)return;
+  try{const state=await api('status');$('setupNotice').textContent=state.ready?(sandbox?'SANDBOX — use a Stripe test card only. No real charge.':'Secure checkout is available. Choose a plan below.'):'We’re completing the AI and support setup. Paid signup is not open yet.';document.querySelectorAll('.buy').forEach(b=>b.disabled=!state.ready);if(!state.ready)return;
     const sid=new URL(location.href).searchParams.get('session_id');
     if(sid){await api('session',{session_id:sid});sessionStorage.setItem('fixflip-confirmation',location.href);history.replaceState({},'',location.pathname+'#workspace');}
     try{const data=await api('projects');selected=data.projects.at(-1)?.id;render(data);}catch(e){if(sid)$('workspaceStatus').textContent=e.message;}
