@@ -8,14 +8,14 @@ function fixture(options={}){
   const reply=options.reply||{answer:'Check the accessible filter with the device off.',escalate:false,reason:''};
   const fetcher=async(url,init)=>{
     if(url.includes('/line_items'))return Response.json({data:[{price:{id:options.monthly?MONTHLY_PRICE:SINGLE_PRICE}}]});
-    if(url.includes('/checkout/sessions/'))return Response.json({livemode:true,status:'complete',payment_status:options.unpaid?'unpaid':'paid',customer_details:{email:'customer@example.test'},subscription:'sub_fixture',payment_intent:'pi_fixture'});
+    if(url.includes('/checkout/sessions/'))return Response.json({livemode:options.testPayment?false:true,status:'complete',payment_status:options.unpaid?'unpaid':'paid',customer_details:{email:'customer@example.test'},subscription:'sub_fixture',payment_intent:'pi_fixture'});
     if(url.includes('/subscriptions/'))return Response.json({id:'sub_fixture',status:options.inactive?'past_due':'active',current_period_start:1000,current_period_end:9999999999,items:{data:[{price:{id:MONTHLY_PRICE}}]}});
     if(url.includes('/payment_intents/'))return Response.json({status:'succeeded',latest_charge:{refunded:!!options.refunded,amount_refunded:0}});
     if(url.endsWith('/responses')){aiCalls++;return Response.json({output:[{content:[{type:'output_text',text:JSON.stringify(reply)}]}]});}
     if(url.endsWith('/escalation-received.html')){emails++;return new Response(null,{status:options.emailFailure?500:303,headers:{Location:'/escalation-received.html'}});}
     throw Error('Unexpected outbound request');
   };
-  const handle=createService({store,env,fetcher});let cookie='';
+  const handle=createService({store,env,fetcher,...options.serviceOptions});let cookie='';
   async function req(action,body){const r=await handle(new Request('https://example.test/api/'+action,{method:body?'POST':'GET',headers:{origin:'https://example.test','content-type':'application/json',cookie},body:body?JSON.stringify(body):undefined}));if(r.headers.get('set-cookie'))cookie=r.headers.get('set-cookie').split(';')[0];return {status:r.status,data:await r.json()};}
   return {req,handle,data,counts:()=>({emails,aiCalls})};
 }
@@ -29,3 +29,18 @@ test('resolved answers are saved without email; duplicate chat is idempotent',as
 test('unresolved answers forward full conversation once',async()=>{const f=fixture({reply:{answer:'This needs personal inspection.',escalate:true,reason:'Cannot diagnose remotely'}});await login(f);const p=await f.req('project',{title:'Unknown equipment issue'});const r=await f.req('chat',{project_id:p.data.id,message:'What is causing this?',request_id:'00000000-0000-4000-8000-000000000000'});assert.equal(r.data.projects[0].status,'forwarded');await f.req('escalate',{project_id:p.data.id});assert.equal(f.counts().emails,1);});
 test('forwarding failure remains pending instead of claiming success',async()=>{const f=fixture({emailFailure:true,reply:{answer:'I cannot resolve this.',escalate:true,reason:'Uncertain'}});await login(f);const p=await f.req('project',{title:'Unknown equipment issue'});const r=await f.req('chat',{project_id:p.data.id,message:'What is causing this?',request_id:'00000000-0000-4000-8000-000000000000'});assert.equal(r.data.projects[0].status,'pending_email');assert.equal((await f.req('escalate',{project_id:p.data.id})).status,503);});
 test('cross-origin requests are rejected',async()=>{const f=fixture();const r=await f.handle(new Request('https://example.test/api/session',{method:'POST',headers:{origin:'https://attacker.test','content-type':'application/json'},body:JSON.stringify({session_id:'cs_live_fixture'})}));assert.equal(r.status,403);});
+
+test('sandbox accepts only test sessions and keeps its cookie separate',async()=>{
+  const f=fixture({testPayment:true,serviceOptions:{sandbox:true}});
+  assert.equal((await login(f)).status,401);
+  const r=await f.handle(new Request('https://example.test/api/session',{method:'POST',headers:{origin:'https://example.test','content-type':'application/json'},body:JSON.stringify({session_id:'cs_test_fixture'})}));
+  assert.equal(r.status,200);assert.match(r.headers.get('set-cookie'),/^__Host-fixflip-test=/);
+});
+test('production rejects test payments even with a live-shaped session ID',async()=>{
+  const f=fixture({testPayment:true});assert.equal((await login(f)).status,403);
+  assert.equal((await f.req('session',{session_id:'cs_test_fixture'})).status,401);
+});
+test('sandbox rejects live Stripe response even with a test-shaped session ID',async()=>{
+  const f=fixture({serviceOptions:{sandbox:true}});
+  assert.equal((await f.req('session',{session_id:'cs_test_fixture'})).status,403);
+});
