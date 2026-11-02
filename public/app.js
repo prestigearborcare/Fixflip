@@ -16,8 +16,8 @@ function render(data){
   $('closedNotice').textContent=p?.status==='resolved'?'Case resolved and closed. Your conversation is saved below. '+(data.used<data.limit?'Use Start project for a separate repair.':'For another repair, choose a plan above.') : '';
   if(!p)return;$('projectTitle').textContent=p.title;
   for(const m of p.messages){const div=document.createElement('div');div.className='message '+m.role;const label=document.createElement('strong');label.textContent=m.role==='user'?'YOU':'FIXFLIP AI';div.append(label,document.createTextNode(m.content));$('messages').append(div);}
-  if(p.status==='forwarded')$('reviewStatus').textContent='Your unresolved question and conversation were submitted for Rick’s review. Replies go to your checkout email. No response time is guaranteed.';
-  if(p.status==='pending_email')$('reviewStatus').textContent='This needs personal review. Your conversation is saved, but forwarding has not been confirmed. Please retry.';
+  if(p.status==='forwarded')$('reviewStatus').textContent='Your unresolved question and conversation were submitted for review by an industry expert. Replies go to your checkout email. No response time is guaranteed.';
+  if(p.status==='pending_email')$('reviewStatus').textContent='This needs review by an industry expert. Your conversation is saved, but forwarding has not been confirmed. Please retry.';
 }
 async function run(task){if(busy)return;busy=true;$('workspaceStatus').textContent='Working…';$('send').disabled=true;$('resolve').disabled=true;try{await task();$('workspaceStatus').textContent='';}catch(e){$('workspaceStatus').textContent=e.message;}finally{busy=false;$('send').disabled=false;$('resolve').disabled=false;}}
 $('newProject').onsubmit=e=>{e.preventDefault();run(async()=>{const data=await api('project',{title:$('title').value});selected=data.id;$('title').value='';render(data);});};
