@@ -55,3 +55,19 @@ No image uploads, human replies inside the app, automated email-delivery receipt
 ## Isolated sandbox checkout
 
 `/test.html` uses `/test-api/*`, a separate Netlify Blobs store, a separate signed cookie, and `STRIPE_TEST_SECRET_KEY`. The sandbox key must belong to account `acct_1UWWEnRsNlbU5mNL`. Only test-mode checkout sessions and the sandbox single-question price are accepted. Production continues to accept only live-mode sessions and its original live prices, with its launch flags unchanged. Test conversations can send real escalation notifications; use synthetic repair questions and the owner's email only. Remove `STRIPE_TEST_SECRET_KEY` after testing to disable the test workspace.
+
+## Monthly rollover rollout (pending activation)
+
+Project Partner remains $79/month. Each confirmed paid monthly invoice earns five credits; unused credits carry forward without a cap while the same subscription remains active and expire when it ends. All projects already started under that subscription consume credits. Earlier-month conversations remain read-only. Credits are calculated from full paginated paid invoice history, including unattended months, and unique service-period starts prevent duplicate grants.
+
+Before publishing:
+- Verify the existing server Stripe key includes invoice read, invoice-payment read, charge read and the existing subscription/checkout/payment-intent reads.
+- Configure the live Stripe event destination to `https://fixflip.repair/.netlify/functions/billing-webhook` for `checkout.session.completed`, `checkout.session.async_payment_succeeded`, `customer.subscription.created`, `customer.subscription.updated`, `customer.subscription.deleted`, `invoice.paid`, `invoice.payment_failed`, `charge.refunded`, `charge.dispute.created`, `radar.early_fraud_warning.created`.
+- Add that destination's signing secret privately to Netlify as `STRIPE_WEBHOOK_SECRET` (Functions scope, Production), then redeploy. Never put it in chat or Git.
+- Verify signed webhook delivery and an isolated subscription renewal/refund/cancellation workflow before enabling the feature in production. The mock tests do not verify live key permissions or Stripe's configured payload version.
+- Review the monthly Stripe product/checkout description so it matches the rollover terms. No price change is required.
+- Review applicable tax registrations before enabling automatic tax; this change does not enable tax collection.
+
+The webhook validates signatures and timestamp tolerance, rejects test events, stores minimal lifecycle reconciliation records, and blocks credits for invoices tied to refunds, disputes, or early fraud warnings. Event receipts are saved only after durable processing; retries do not add credits. No billing credit is granted by elapsed time or a webhook body alone. Risk blocks require manual support review to clear.
+
+Search discovery: canonical URL, social metadata, robots.txt and sitemap.xml are included. Submit `https://fixflip.repair/sitemap.xml` through the verified Google Search Console property after publishing. Indexing or search placement is not guaranteed.
