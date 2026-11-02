@@ -1,0 +1,7 @@
+User-agent: *
+Allow: /
+Disallow: /api/
+Disallow: /test-api/
+Disallow: /test.html
+
+Sitemap: https://fixflip.repair/sitemap.xml

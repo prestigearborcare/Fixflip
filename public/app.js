@@ -3,10 +3,10 @@ const sandbox=location.pathname==='/test.html';
 const links={single:'https://buy.stripe.com/9B6bIU9LO6XN1CF6NG5ZC00',monthly:'https://buy.stripe.com/dRm8wI8HK6XN813gog5ZC01'};
 if(sandbox)links.single='https://buy.stripe.com/test_4gM14peAx5zI9lX2Fg1VK00';
 let account, selected, busy=false, pendingMessage;
-async function api(action,body){const r=await fetch((sandbox?'/test-api/':'/api/')+action,{method:body?'POST':'GET',headers:body?{'Content-Type':'application/json'}:{},body:body?JSON.stringify(body):undefined});const d=await r.json();if(!r.ok)throw new Error(d.error||'Please try again.');return d;}
+async function api(action,body){const r=await fetch((sandbox?'/test-api/':'/api/')+action,{method:body?'POST':'GET',cache:'no-store',headers:body?{'Content-Type':'application/json'}:{},body:body?JSON.stringify(body):undefined});const d=await r.json();if(!r.ok)throw new Error(d.error||'Please try again.');return d;}
 function render(data){
   account=data;$('account').hidden=false;$('accessNotice').hidden=true;
-  $('allowance').textContent=`${data.plan} · ${data.used} of ${data.limit} project slots used${data.periodEnd?' · renews/resets '+new Date(data.periodEnd).toLocaleDateString():''}`;
+  $('allowance').textContent=`${data.plan} · ${data.remaining ?? Math.max(0,data.limit-data.used)} project credits available${data.rollover?' · unused credits roll over':''}${data.periodEnd?' · next billing date '+new Date(data.periodEnd).toLocaleDateString():''}`;
   $('newProject').hidden=data.used>=data.limit;
   $('projectList').replaceChildren();
   for(const p of data.projects){const b=document.createElement('button');b.textContent=p.title+(p.status==='resolved'?' (resolved)':'')+(p.current?'':' (earlier period)');b.setAttribute('aria-current',String(p.id===selected));b.onclick=()=>{selected=p.id;pendingMessage=null;render(account);};$('projectList').append(b);}
