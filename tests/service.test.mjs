@@ -9,7 +9,8 @@ function fixture(options={}){
   const fetcher=async(url,init)=>{
     if(url.includes('/line_items'))return Response.json({data:[{price:{id:options.monthly?MONTHLY_PRICE:SINGLE_PRICE}}]});
     if(url.includes('/checkout/sessions/'))return Response.json({livemode:options.testPayment?false:true,status:'complete',payment_status:options.unpaid?'unpaid':'paid',customer_details:{email:'customer@example.test'},subscription:'sub_fixture',payment_intent:'pi_fixture'});
-    if(url.includes('/subscriptions/'))return Response.json({id:'sub_fixture',status:options.inactive?'past_due':'active',current_period_start:1000,current_period_end:9999999999,items:{data:[{price:{id:MONTHLY_PRICE}}]}});
+    if(url.includes('/subscriptions/'))return Response.json({id:'sub_fixture',status:options.inactive?'past_due':'active',current_period_start:options.periodStart||1000,current_period_end:9999999999,items:{data:[{price:{id:MONTHLY_PRICE}}]}});
+    if(url.includes('/invoices?'))return Response.json((options.invoicePages?.[url.includes('starting_after=')?1:0])||options.invoices||{data:[{id:'in_fixture',status:'paid',livemode:!options.testPayment,billing_reason:'subscription_create',lines:{data:[{price:{id:MONTHLY_PRICE},amount:7900,period:{start:1000,end:2000}}]}}],has_more:false});
     if(url.includes('/payment_intents/'))return Response.json({status:'succeeded',latest_charge:{refunded:!!options.refunded,amount_refunded:0}});
     if(url.endsWith('/responses')){aiCalls++;return Response.json({output:[{content:[{type:'output_text',text:JSON.stringify(reply)}]}]});}
     if(url.endsWith('/escalation-received.html')){emails++;return new Response(null,{status:options.emailFailure?500:303,headers:{Location:'/escalation-received.html'}});}
@@ -61,3 +62,45 @@ test('cannot close a case while its AI answer is being processed',async()=>{
  assert.equal((await f.req('resolve',{project_id:p.data.id})).status,409);
 });
 
+
+function paidInvoice(id,start,{reason='subscription_cycle',price=MONTHLY_PRICE,status='paid',credit=0}={}){
+ return {id,status,livemode:true,billing_reason:reason,post_payment_credit_notes_amount:credit,lines:{data:[{price:{id:price},amount:7900,period:{start,end:start+1000}}]}};
+}
+test('unused credits roll across paid months and previous projects consume credits',async()=>{
+ const f=fixture({monthly:true,periodStart:2000,invoices:{data:[paidInvoice('in_2',2000),paidInvoice('in_1',1000)],has_more:false}});
+ f.data.set('subscription-sub_fixture',{etag:'seed',data:{projects:[0,1].map(i=>({id:'old-'+i,title:'Earlier repair',period:'1000',messages:[],status:'resolved'})),calls:[]}});
+ await login(f);let r=await f.req('projects');assert.equal(r.data.remaining,8);assert.equal(r.data.limit,10);
+ for(let i=0;i<8;i++)assert.equal((await f.req('project',{title:'New repair '+i})).status,200);
+ assert.equal((await f.req('project',{title:'Over the balance'})).status,403);
+ assert.equal((await f.req('projects')).data.remaining,0);
+});
+test('duplicate invoices, nonrenewal invoices and wrong prices do not add credits',async()=>{
+ const f=fixture({monthly:true,invoices:{data:[paidInvoice('in_a',1000),paidInvoice('in_duplicate',1000),paidInvoice('in_manual',2000,{reason:'manual'}),paidInvoice('in_wrong',3000,{price:'other'}),paidInvoice('in_unpaid',4000,{status:'open'})],has_more:false}});
+ await login(f);assert.equal((await f.req('projects')).data.limit,5);
+ await login(f);assert.equal((await f.req('projects')).data.limit,5);
+});
+test('active subscription without a confirmed current invoice cannot grant access',async()=>{
+ const f=fixture({monthly:true,periodStart:2000,invoices:{data:[paidInvoice('in_old',1000)],has_more:false}});assert.equal((await login(f)).status,403);
+});
+test('rollover credits cannot be overspent by concurrent requests',async()=>{
+ const f=fixture({monthly:true});await login(f);for(let i=0;i<4;i++)await f.req('project',{title:'Repair project '+i});
+ const results=await Promise.all([f.req('project',{title:'Last credit A'}),f.req('project',{title:'Last credit B'})]);assert.equal(results.filter(r=>r.status===200).length,1);
+});
+test('modern invoice price fields work and credited invoices do not grant credits',async()=>{
+ const modern=paidInvoice('in_modern',1000);delete modern.lines.data[0].price;modern.lines.data[0].pricing={price_details:{price:MONTHLY_PRICE}};
+ const f=fixture({monthly:true,invoices:{data:[modern,paidInvoice('in_credited',500,{credit:7900})],has_more:false}});await login(f);assert.equal((await f.req('projects')).data.limit,5);
+});
+
+test('paid months are collected across invoice pages, including unattended months',async()=>{
+ const f=fixture({monthly:true,periodStart:3000,invoicePages:[{data:[paidInvoice('in_3',3000)],has_more:true},{data:[paidInvoice('in_2',2000),paidInvoice('in_1',1000)],has_more:false}]});await login(f);assert.equal((await f.req('projects')).data.remaining,15);
+});
+test('rollover does not reopen previous-month repair conversations',async()=>{
+ const f=fixture({monthly:true,periodStart:2000,invoices:{data:[paidInvoice('in_2',2000),paidInvoice('in_1',1000)],has_more:false}});
+ f.data.set('subscription-sub_fixture',{etag:'seed',data:{projects:[{id:'old',title:'Earlier repair',period:'1000',messages:[],status:'open'}],calls:[]}});
+ await login(f);assert.equal((await f.req('projects')).data.projects[0].current,false);assert.equal((await f.req('chat',{project_id:'old',message:'Another question',request_id:'00000000-0000-4000-8000-000000000000'})).status,403);
+});
+test('a risk-blocked invoice does not grant rollover credits',async()=>{
+ const f=fixture({monthly:true,invoices:{data:[paidInvoice('in_current',1000),paidInvoice('in_refunded',500)],has_more:false}});
+ f.data.set('blocked-invoice-in_refunded',{etag:'risk',data:{reason:'charge.refunded'}});
+ await login(f);assert.equal((await f.req('projects')).data.limit,5);
+});
